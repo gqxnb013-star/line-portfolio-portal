@@ -536,7 +536,7 @@ function householdRow(item) {
   return `
     <div class="row card--tap" data-household-id="${esc(item['家計内訳ID'])}">
       <span class="row__label" style="color:${color}">${esc(textOr(item['区分']))} / ${esc(textOr(item['カテゴリ']))}</span>
-      <span class="row__value num">${esc(yen(item['金額']))}</span>
+      <span class="row__value num">${esc(yen(item['金額']))}<span class="row__chevron">›</span></span>
     </div>`;
 }
 

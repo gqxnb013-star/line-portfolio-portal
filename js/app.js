@@ -72,7 +72,7 @@ function renderShell() {
     </header>
     ${state.role === 'ifa' && state.customerId ? `
       <div class="context-bar">
-        <span>担当者モードで ${esc(state.customerName)} 様のデータを表示中</span>
+        <span>担当者モード：${esc(state.customerName)} 様</span>
         <button id="backToList">顧客一覧へ</button>
       </div>` : ''}
     <main id="main"></main>
