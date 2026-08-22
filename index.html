@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>資産管理ポータル</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Hiragino Sans", sans-serif;
+      background: #f9fafb;
+      color: #1f2937;
+      padding: 24px 20px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 16px; margin: 0 0 16px 0; }
+    .status { font-size: 13px; color: #6b7280; margin-bottom: 12px; }
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #10b981;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    button:disabled { background: #d1d5db; }
+    .error { color: #b91c1c; font-size: 12px; margin-top: 8px; }
+    .success { color: #047857; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <h1>資産管理ポータル</h1>
+    <div class="status" id="status">読み込み中...</div>
+  </div>
+
+<script>
+  // LIFF ID と GAS APIのURL。どちらもブラウザから見える値なので秘密情報ではない。
+  // (顧客データへのアクセスはGAS側でLINEのIDトークンを検証して制御している)
+  const LIFF_ID = '2011207844-O3tCgdCh';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyyIFEawr9YGA2saXs2gfwN3yXF_FXpw_lupc7OrSTIjTLUScGOPH5V43J4uQtpUUJSQQ/exec';
+
+  const statusEl = document.getElementById('status');
+  const appEl = document.getElementById('app');
+
+  function setStatus(text) { statusEl.textContent = text; }
+
+  /**
+   * GAS APIをGETで呼び出す。
+   * GETならブラウザのプリフライトが発生せず、GAS側のレスポンスには
+   * Access-Control-Allow-Origin: * が付くのでCORSを気にせず呼べる。
+   */
+  async function callApi(action, params) {
+    const url = new URL(API_URL);
+    url.searchParams.set('action', action);
+    Object.keys(params || {}).forEach(function (key) {
+      url.searchParams.set(key, params[key]);
+    });
+    const res = await fetch(url.toString());
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    return json.data;
+  }
+
+  function renderPinForm() {
+    appEl.innerHTML = `
+      <h1>資産管理ポータル</h1>
+      <div class="status">初回のみ、担当IFAから届いたメールのPINコードを入力してください。</div>
+      <input id="pinInput" type="text" inputmode="numeric" maxlength="6" placeholder="6桁のPINコード">
+      <button id="pinSubmit">連携する</button>
+      <div id="pinMsg"></div>
+    `;
+    document.getElementById('pinSubmit').onclick = async function () {
+      const pin = document.getElementById('pinInput').value.trim();
+      const msgEl = document.getElementById('pinMsg');
+      msgEl.className = '';
+      msgEl.textContent = '確認中...';
+      try {
+        await callApi('linkPin', { idToken: liff.getIDToken(), pin: pin });
+        msgEl.className = 'success';
+        msgEl.textContent = '連携できました。画面を開き直してください。';
+      } catch (e) {
+        msgEl.className = 'error';
+        msgEl.textContent = e.message || String(e);
+      }
+    };
+  }
+
+  function renderIfaSetupForm() {
+    appEl.innerHTML = `
+      <h1>IFA本人登録(初回セットアップ専用)</h1>
+      <div class="status">GASのスクリプトプロパティに設定した合言葉を入力してください。</div>
+      <input id="secretInput" type="password" placeholder="合言葉">
+      <button id="secretSubmit">登録する</button>
+      <div id="secretMsg"></div>
+    `;
+    document.getElementById('secretSubmit').onclick = async function () {
+      const secret = document.getElementById('secretInput').value;
+      const msgEl = document.getElementById('secretMsg');
+      msgEl.className = '';
+      msgEl.textContent = '確認中...';
+      try {
+        const res = await callApi('registerIfa', { idToken: liff.getIDToken(), secret: secret });
+        msgEl.className = 'success';
+        msgEl.textContent = 'IFA本人として登録しました(LINE UserID: ' + res.lineUserId + ')。以後 ?setup=ifa は使わないでください。';
+      } catch (e) {
+        msgEl.className = 'error';
+        msgEl.textContent = e.message || String(e);
+      }
+    };
+  }
+
+  function renderPlaceholder(role, customerId) {
+    const label = role === 'ifa' ? 'IFA用' : '顧客用';
+    appEl.innerHTML = `
+      <h1>資産管理ポータル</h1>
+      <div class="status">ログインを確認しました(${label}${customerId ? ' / 顧客ID: ' + customerId : ''})。</div>
+      <div class="status">画面本体はPhase 4で実装予定です。</div>
+    `;
+  }
+
+  /**
+   * ?setup=ifa の判定。
+   * LIFFのURL(liff.line.me/{LIFF_ID}?setup=ifa)経由だと、クエリが
+   * liff.state パラメータの中に入って渡ってくるケースがあるため両方を見る。
+   */
+  function isSetupMode() {
+    const search = new URLSearchParams(location.search);
+    if (search.get('setup') === 'ifa') return true;
+    const state = search.get('liff.state');
+    return !!state && new URLSearchParams(state.replace(/^\?/, '')).get('setup') === 'ifa';
+  }
+
+  async function init() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+      setStatus('ログイン状態を確認しています...');
+
+      if (isSetupMode()) {
+        renderIfaSetupForm();
+        return;
+      }
+
+      const res = await callApi('role', { idToken: liff.getIDToken() });
+      if (res.role === 'unlinked') {
+        renderPinForm();
+      } else {
+        renderPlaceholder(res.role, res.customerId);
+      }
+    } catch (e) {
+      setStatus('初期化に失敗しました: ' + (e.message || String(e)));
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
