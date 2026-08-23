@@ -32,6 +32,140 @@ function target(state) {
 
 const isIfa = (state) => state.role === 'ifa';
 
+// ============================== 添付ファイル(保険証券・目論見書等のPDF) ==============================
+// 保険契約・投資商品の詳細モーダルの中で共通利用する(Phase 6)
+
+const ATTACHMENT_TYPE_OPTIONS = {
+  '保険契約': ['保険証券', 'パンフレット', 'その他'],
+  '投資商品': ['目論見書', '月次報告書', 'その他']
+};
+
+/** 詳細モーダルに埋め込む添付ファイルセクションの要素を返す */
+function renderAttachmentSection(targetType, targetId) {
+  const container = h('<div><div class="section-title">関連書類(PDF)</div></div>');
+  loadAttachments(container, targetType, targetId);
+  return container;
+}
+
+async function loadAttachments(container, targetType, targetId) {
+  const listEl = h('<div class="loading">読み込み中...</div>');
+  // section-titleは残したまま中身だけ差し替える
+  container.querySelectorAll(':scope > *:not(.section-title)').forEach(function (el) { el.remove(); });
+  container.appendChild(listEl);
+
+  try {
+    const items = await api('attachments.list', { targetType: targetType, targetId: targetId });
+    const listHtml = h(`
+      <div>
+        <div class="card">
+          ${items.length === 0 ? emptyText('まだ書類がありません') : items.map(attachmentRow).join('')}
+        </div>
+        <button type="button" class="btn btn--sub" id="addAttachment" style="margin-bottom:12px">＋ PDFを追加</button>
+      </div>
+    `);
+    listEl.replaceWith(listHtml);
+
+    listHtml.querySelectorAll('[data-file-id]').forEach(function (el) {
+      el.onclick = function () { openAttachment(el.dataset.fileId); };
+    });
+    listHtml.querySelector('#addAttachment').onclick = function () {
+      openAttachmentUploadForm(targetType, targetId, function () {
+        loadAttachments(container, targetType, targetId);
+      });
+    };
+  } catch (err) {
+    const errorEl = h(`<div class="error-box">${esc(err.message || String(err))}</div>`);
+    listEl.replaceWith(errorEl);
+  }
+}
+
+function attachmentRow(item) {
+  return `
+    <div class="row card--tap" data-file-id="${esc(item['ファイルID'])}">
+      <span class="row__label">${esc(textOr(item['ファイル種別']))} / ${esc(textOr(item['ファイル名']))}</span>
+      <span class="row__value">${esc(date(item['アップロード日時']))}<span class="row__chevron">›</span></span>
+    </div>`;
+}
+
+/** タップされたPDFをダウンロードしてBlob URLで新しいタブに開く */
+async function openAttachment(fileId) {
+  toast('ファイルを開いています...');
+  try {
+    const data = await api('attachments.download', { fileId: fileId });
+    const byteChars = atob(data['fileData']);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([bytes], { type: data['mimeType'] || 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  } catch (err) {
+    toast(err.message || String(err), 'error');
+  }
+}
+
+/** ファイル種類の選択+ファイル選択だけの簡易フォーム(openFormModalの汎用フォームはfile型を扱わないため専用に組む) */
+function openAttachmentUploadForm(targetType, targetId, onDone) {
+  const options = ATTACHMENT_TYPE_OPTIONS[targetType] || ['その他'];
+  const body = h(`
+    <div>
+      <div class="field">
+        <label class="field__label">書類の種類<span class="req">*</span></label>
+        <select id="attachmentType">
+          ${options.map(function (o) { return `<option value="${esc(o)}">${esc(o)}</option>`; }).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label">PDFファイル<span class="req">*</span></label>
+        <input type="file" id="attachmentFile" accept="application/pdf">
+        <div class="field__help">上限10MBまでのPDFファイルに対応しています</div>
+      </div>
+      <button type="button" class="btn" id="uploadAttachment">アップロードする</button>
+    </div>
+  `);
+  const modal = openModal('PDFの追加', body);
+  const submitBtn = body.querySelector('#uploadAttachment');
+
+  submitBtn.onclick = async function () {
+    const file = body.querySelector('#attachmentFile').files[0];
+    if (!file) { toast('ファイルを選択してください', 'error'); return; }
+    if (file.type !== 'application/pdf') { toast('PDFファイルを選択してください', 'error'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast('ファイルサイズが大きすぎます(上限10MB)', 'error'); return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'アップロード中...';
+    try {
+      const base64 = await fileToBase64(file);
+      await api('attachments.upload', {
+        values: {
+          '対象種別': targetType,
+          '対象ID': targetId,
+          'ファイル種別': body.querySelector('#attachmentType').value,
+          'ファイル名': file.name,
+          'fileData': base64,
+          'mimeType': file.type
+        }
+      });
+      toast('アップロードしました');
+      modal.close();
+      onDone();
+    } catch (err) {
+      toast(err.message || String(err), 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'アップロードする';
+    }
+  };
+}
+
+/** FileをBase64文字列(data:URLのヘッダ部分を除いたもの)に変換する */
+function fileToBase64(file) {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function () { resolve(reader.result.split(',')[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ============================== ホーム ==============================
 
 export function renderHome(container, state) {
@@ -209,6 +343,7 @@ function openInsuranceDetail(item, state) {
       ${isIfa(state) ? '<button class="btn" id="editContract">編集する</button>' : ''}
     </div>
   `);
+  body.appendChild(renderAttachmentSection('保険契約', item['契約ID']));
 
   const modal = openModal(textOr(item['商品名'], '保険契約'), body);
 
@@ -334,6 +469,7 @@ function openInvestmentDetail(item, state) {
       ${isIfa(state) ? '<button class="btn" id="editInvestment">編集する</button>' : ''}
     </div>
   `);
+  body.appendChild(renderAttachmentSection('投資商品', item['投資ID']));
 
   const modal = openModal(textOr(item['商品名'], '投資商品'), body);
 

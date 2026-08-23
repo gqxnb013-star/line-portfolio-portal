@@ -256,6 +256,14 @@ main {
   color: var(--text);
 }
 .field textarea { min-height: 80px; resize: vertical; }
+.field input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  font-size: 13px;
+  background: #fafafa;
+}
 .field--check { display: flex; align-items: center; gap: 8px; }
 .field--check input { width: 20px; height: 20px; }
 .field--check label { font-size: 14px; font-weight: 500; color: var(--text); margin: 0; }
