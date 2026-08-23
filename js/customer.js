@@ -32,17 +32,19 @@ function target(state) {
 
 const isIfa = (state) => state.role === 'ifa';
 
-// ============================== 添付ファイル(保険証券・目論見書等のPDF) ==============================
+// ============================== 添付ファイル(保険証券・目論見書等の書類) ==============================
 // 保険契約・投資商品の詳細モーダルの中で共通利用する(Phase 6)
+// PDFに加え、紙の証券をスマホで撮影した写真(JPEG/PNG)もそのまま保存できるようにしている。
 
 const ATTACHMENT_TYPE_OPTIONS = {
   '保険契約': ['保険証券', 'パンフレット', 'その他'],
   '投資商品': ['目論見書', '月次報告書', 'その他']
 };
+const ALLOWED_ATTACHMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 
 /** 詳細モーダルに埋め込む添付ファイルセクションの要素を返す */
 function renderAttachmentSection(targetType, targetId) {
-  const container = h('<div><div class="section-title">関連書類(PDF)</div></div>');
+  const container = h('<div><div class="section-title">関連書類</div></div>');
   loadAttachments(container, targetType, targetId);
   return container;
 }
@@ -60,7 +62,7 @@ async function loadAttachments(container, targetType, targetId) {
         <div class="card">
           ${items.length === 0 ? emptyText('まだ書類がありません') : items.map(attachmentRow).join('')}
         </div>
-        <button type="button" class="btn btn--sub" id="addAttachment" style="margin-bottom:12px">＋ PDFを追加</button>
+        <button type="button" class="btn btn--sub" id="addAttachment" style="margin-bottom:12px">＋ 書類を追加</button>
       </div>
     `);
     listEl.replaceWith(listHtml);
@@ -115,20 +117,20 @@ function openAttachmentUploadForm(targetType, targetId, onDone) {
         </select>
       </div>
       <div class="field">
-        <label class="field__label">PDFファイル<span class="req">*</span></label>
-        <input type="file" id="attachmentFile" accept="application/pdf">
-        <div class="field__help">上限10MBまでのPDFファイルに対応しています</div>
+        <label class="field__label">ファイル<span class="req">*</span></label>
+        <input type="file" id="attachmentFile" accept="application/pdf,image/jpeg,image/png">
+        <div class="field__help">PDF・写真(JPEG/PNG)に対応、上限10MBです</div>
       </div>
       <button type="button" class="btn" id="uploadAttachment">アップロードする</button>
     </div>
   `);
-  const modal = openModal('PDFの追加', body);
+  const modal = openModal('書類の追加', body);
   const submitBtn = body.querySelector('#uploadAttachment');
 
   submitBtn.onclick = async function () {
     const file = body.querySelector('#attachmentFile').files[0];
     if (!file) { toast('ファイルを選択してください', 'error'); return; }
-    if (file.type !== 'application/pdf') { toast('PDFファイルを選択してください', 'error'); return; }
+    if (ALLOWED_ATTACHMENT_MIME_TYPES.indexOf(file.type) === -1) { toast('PDF・JPEG・PNG形式のファイルを選択してください', 'error'); return; }
     if (file.size > 10 * 1024 * 1024) { toast('ファイルサイズが大きすぎます(上限10MB)', 'error'); return; }
 
     submitBtn.disabled = true;
