@@ -9,11 +9,11 @@
  * state = { role: 'ifa'|'customer', customerId: 表示対象の顧客ID, reload: 再描画関数 }
  */
 
-import { api } from './api.js';
+import { api } from './api.js?v=20260823a';
 import {
   h, esc, yen, date, bool, row, textOr, toast,
   showLoading, showError, emptyText, openModal, openFormModal
-} from './ui.js';
+} from './ui.js?v=20260823a';
 
 /** 読み込み→描画の共通の流れ。通信エラーは画面上に出す */
 async function load(container, render) {

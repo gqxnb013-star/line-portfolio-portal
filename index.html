@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>資産管理ポータル</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20260823a">
   <!-- LIFF SDK。画面のロジックは js/app.js 以下に分けている -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -12,6 +12,12 @@
   <div id="app">
     <div class="standalone"><p>読み込み中...</p></div>
   </div>
-  <script type="module" src="js/app.js"></script>
+  <!--
+    末尾の ?v=... はLINEアプリ内WebViewの強いキャッシュを避けるためのバスティング用クエリ。
+    js/app.js の読み込み元(index.html)と、app.js自身が行うcustomer.js等への
+    相対importの両方に同じ値を付けないとキャッシュが効いてしまうので、更新のたびに
+    この値と各jsファイル内のimport文の値を揃えて書き換えること。
+  -->
+  <script type="module" src="js/app.js?v=20260823a"></script>
 </body>
 </html>
