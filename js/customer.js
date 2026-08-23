@@ -9,11 +9,11 @@
  * state = { role: 'ifa'|'customer', customerId: 表示対象の顧客ID, reload: 再描画関数 }
  */
 
-import { api } from './api.js?v=20260823b';
+import { api } from './api.js?v=20260823c';
 import {
   h, esc, yen, date, bool, row, textOr, toast,
   showLoading, showError, emptyText, openModal, openFormModal
-} from './ui.js?v=20260823b';
+} from './ui.js?v=20260823c';
 
 /** 読み込み→描画の共通の流れ。通信エラーは画面上に出す */
 async function load(container, render) {
@@ -35,6 +35,7 @@ const isIfa = (state) => state.role === 'ifa';
 // ============================== 添付ファイル(保険証券・目論見書等の書類) ==============================
 // 保険契約・投資商品の詳細モーダルの中で共通利用する(Phase 6)
 // PDFに加え、紙の証券をスマホで撮影した写真(JPEG/PNG)もそのまま保存できるようにしている。
+// iPhoneのHEIC写真は保存前にJPEGへ変換する(convertHeicToJpeg)。
 
 const ATTACHMENT_TYPE_OPTIONS = {
   '保険契約': ['保険証券', 'パンフレット', 'その他'],
@@ -67,16 +68,15 @@ async function loadAttachments(container, targetType, targetId) {
     `);
     listEl.replaceWith(listHtml);
 
+    const reload = function () { loadAttachments(container, targetType, targetId); };
     listHtml.querySelectorAll('[data-file-id]').forEach(function (el) {
       el.onclick = function () {
         const item = items.find(function (i) { return String(i['ファイルID']) === el.dataset.fileId; });
-        openAttachment(item);
+        openAttachment(item, reload);
       };
     });
     listHtml.querySelector('#addAttachment').onclick = function () {
-      openAttachmentUploadForm(targetType, targetId, function () {
-        loadAttachments(container, targetType, targetId);
-      });
+      openAttachmentUploadForm(targetType, targetId, reload);
     };
   } catch (err) {
     const errorEl = h(`<div class="error-box">${esc(err.message || String(err))}</div>`);
@@ -98,8 +98,10 @@ function attachmentRow(item) {
  * 別タブで開く方式(window.open + blob URL)はLINEアプリ内のWebViewが対応しておらず
  * 「開けません」となるため、ポータルの画面内に直接描画している。
  * 写真はdata URLを<img>に、PDFはPDF.jsでcanvasに描画する。
+ *
+ * @param {Function} onDeleted 削除が完了したときに呼ぶ再読み込み処理
  */
-async function openAttachment(item) {
+async function openAttachment(item, onDeleted) {
   const body = h('<div><div class="loading">読み込み中...</div></div>');
   const modal = openModal(textOr(item['ファイル名'], '書類'), body);
 
@@ -119,6 +121,25 @@ async function openAttachment(item) {
     body.innerHTML = '';
     body.appendChild(h(`<div class="error-box">${esc(err.message || String(err))}</div>`));
   }
+
+  // 中身の表示に失敗した場合でも、誤アップロードを取り消せるよう削除ボタンは常に出す
+  const deleteBtn = h('<button type="button" class="btn btn--danger" style="margin-top:12px">この書類を削除する</button>');
+  deleteBtn.onclick = async function () {
+    if (!window.confirm('この書類を削除します。元に戻せません。よろしいですか?')) return;
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = '削除中...';
+    try {
+      await api('attachments.delete', { fileId: item['ファイルID'] });
+      toast('書類を削除しました');
+      modal.close();
+      onDeleted();
+    } catch (err) {
+      toast(err.message || String(err), 'error');
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = 'この書類を削除する';
+    }
+  };
+  body.appendChild(deleteBtn);
 
   return modal;
 }
@@ -189,8 +210,8 @@ function openAttachmentUploadForm(targetType, targetId, onDone) {
       </div>
       <div class="field">
         <label class="field__label">ファイル<span class="req">*</span></label>
-        <input type="file" id="attachmentFile" accept="application/pdf,image/*">
-        <div class="field__help">PDF・写真(JPEG/PNG)に対応、上限10MBです</div>
+        <input type="file" id="attachmentFile" accept="application/pdf,image/*,.heic,.heif">
+        <div class="field__help">PDF・写真に対応、上限10MBです(iPhoneのHEIC写真は自動でJPEGに変換します)</div>
       </div>
       <button type="button" class="btn" id="uploadAttachment">アップロードする</button>
     </div>
@@ -199,14 +220,26 @@ function openAttachmentUploadForm(targetType, targetId, onDone) {
   const submitBtn = body.querySelector('#uploadAttachment');
 
   submitBtn.onclick = async function () {
-    const file = body.querySelector('#attachmentFile').files[0];
-    if (!file) { toast('ファイルを選択してください', 'error'); return; }
-    if (ALLOWED_ATTACHMENT_MIME_TYPES.indexOf(file.type) === -1) { toast('PDF・JPEG・PNG形式のファイルを選択してください', 'error'); return; }
-    if (file.size > 10 * 1024 * 1024) { toast('ファイルサイズが大きすぎます(上限10MB)', 'error'); return; }
+    const selected = body.querySelector('#attachmentFile').files[0];
+    if (!selected) { toast('ファイルを選択してください', 'error'); return; }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'アップロード中...';
     try {
+      // HEICは保存後にPC・Androidで開けないため、送る前にJPEGへ変換する
+      let file = selected;
+      if (isHeic(selected)) {
+        submitBtn.textContent = '写真を変換中...';
+        file = await convertHeicToJpeg(selected);
+        submitBtn.textContent = 'アップロード中...';
+      }
+      if (ALLOWED_ATTACHMENT_MIME_TYPES.indexOf(file.type) === -1) {
+        throw new Error('PDF・JPEG・PNG形式のファイルを選択してください');
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('ファイルサイズが大きすぎます(上限10MB)');
+      }
+
       const base64 = await fileToBase64(file);
       await api('attachments.upload', {
         values: {
@@ -227,6 +260,49 @@ function openAttachmentUploadForm(targetType, targetId, onDone) {
       submitBtn.textContent = 'アップロードする';
     }
   };
+}
+
+/**
+ * iPhoneのHEIC写真かどうか。
+ * 「写真」から選ぶとiOSが自動でJPEGに変換してくれるが、「ファイル」アプリ経由だと
+ * image/heic のまま渡ってくる。MIMEタイプが空で届く端末もあるため拡張子でも判定する。
+ */
+function isHeic(file) {
+  return /^image\/(heic|heif)/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+}
+
+/**
+ * HEIC写真をJPEGに変換する。
+ * HEICのまま保存するとPC・Androidの標準ブラウザで表示できず、後から書類を確認できなくなる。
+ * iOSのWebViewはHEICを画像として描画できるので、canvasに描き直してJPEGとして書き出す。
+ * (変換ライブラリを追加せずに済み、読み込みも増やさない)
+ */
+function convertHeicToJpeg(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.toBlob(function (blob) {
+        if (!blob) { reject(new Error('写真の変換に失敗しました。もう一度お試しください。')); return; }
+        const name = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
+        resolve(new File([blob], name, { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.85);
+    };
+
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      // HEICを描画できない端末(Android・PCなど)ではここに来る
+      reject(new Error('この写真(HEIC形式)は変換できませんでした。iPhoneの「写真」から選び直すか、JPEG形式で保存してからお試しください。'));
+    };
+
+    img.src = url;
+  });
 }
 
 /** FileをBase64文字列(data:URLのヘッダ部分を除いたもの)に変換する */

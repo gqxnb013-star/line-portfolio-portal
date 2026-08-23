@@ -7,13 +7,13 @@
  *   IFA       → 顧客一覧・ログ管理。顧客を選ぶと、その顧客の画面群へ入る
  */
 
-import { api, ApiError } from './api.js?v=20260823b';
-import { esc, toast } from './ui.js?v=20260823b';
+import { api, ApiError } from './api.js?v=20260823c';
+import { esc, toast } from './ui.js?v=20260823c';
 import {
   renderHome, renderInsurance, renderInvestment,
   renderBank, renderHousehold, renderProfile, renderNotices
-} from './customer.js?v=20260823b';
-import { renderCustomerList } from './ifa.js?v=20260823b';
+} from './customer.js?v=20260823c';
+import { renderCustomerList } from './ifa.js?v=20260823c';
 
 const LIFF_ID = '2011207844-O3tCgdCh';
 

@@ -18,3 +18,19 @@ JSON APIを`fetch`で呼び出します。
 
 `index.html`冒頭の`LIFF_ID`と`API_URL`が環境依存の値です。GASを再デプロイして
 exec URLが変わった場合は`API_URL`の更新が必要です。
+
+## 更新のたびに必ずやること
+
+LINEアプリ内のWebViewはHTML/JSを強くキャッシュするため、`index.html`と各jsの
+import文には`?v=YYYYMMDDx`を付けています。**この値が揃っていないと古いモジュールが
+混ざります。** pushする前に必ず次を実行してください。
+
+```sh
+./bump-version.sh
+```
+
+同じ日に複数回更新した場合は末尾の英字が自動で進みます(`20260823a` → `20260823b`)。
+新しいjsファイルを追加したときは、`bump-version.sh`の`TARGETS`にも追加してください。
+
+なお、GitHub Pagesへの反映には30秒〜1分かかります。push直後の`curl`確認は
+早すぎると古い内容を見ることになるので注意してください。

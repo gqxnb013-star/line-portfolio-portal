@@ -8,8 +8,8 @@
  * customer.js を role='ifa' で使い回す。
  */
 
-import { api } from './api.js?v=20260823b';
-import { esc, yen, textOr, toast, showLoading, showError, emptyText, openFormModal } from './ui.js?v=20260823b';
+import { api } from './api.js?v=20260823c';
+import { esc, yen, textOr, toast, showLoading, showError, emptyText, openFormModal } from './ui.js?v=20260823c';
 
 const NEW_CUSTOMER_FIELDS = [
   { name: '氏名', label: '氏名', type: 'text', required: true },
