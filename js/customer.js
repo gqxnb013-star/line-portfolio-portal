@@ -41,8 +41,15 @@ export function renderHome(container, state) {
     const insurance = data['保険'];
     const household = data['家計'];
     const alerts = data['直近のお知らせ'] || [];
+    const friendAddUrl = data['友だち追加URL'];
 
     container.innerHTML = `
+      ${friendAddUrl ? `
+        <div class="card" style="background:#eafaf0">
+          満期日や払込日などのお知らせをLINEで受け取るには、公式アカウントの友だち追加をお願いします。<br>
+          <a href="${esc(friendAddUrl)}" target="_blank" rel="noopener">友だち追加はこちら</a>
+        </div>
+      ` : ''}
       <div class="card hero">
         <div class="hero__label">総資産(保険の投資性商品 + 投資商品 + 預金)</div>
         <div class="hero__value num">${esc(yen(assets['総資産']))}</div>
