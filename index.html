@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--
+    LINEアプリ内のWebViewはこのHTMLを強くキャッシュし、更新しても古い画面が
+    表示され続けることがある。GitHub Pagesは配信ヘッダーを変更できないため、
+    metaタグで毎回読み直させる(下のJSのバージョンクエリと合わせた二重の対策)。
+  -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>資産管理ポータル</title>
   <link rel="stylesheet" href="css/style.css?v=20260823b">
   <!-- LIFF SDK。画面のロジックは js/app.js 以下に分けている -->
