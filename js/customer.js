@@ -9,11 +9,11 @@
  * state = { role: 'ifa'|'customer', customerId: 表示対象の顧客ID, reload: 再描画関数 }
  */
 
-import { api } from './api.js?v=20260823a';
+import { api } from './api.js?v=20260823b';
 import {
   h, esc, yen, date, bool, row, textOr, toast,
   showLoading, showError, emptyText, openModal, openFormModal
-} from './ui.js?v=20260823a';
+} from './ui.js?v=20260823b';
 
 /** 読み込み→描画の共通の流れ。通信エラーは画面上に出す */
 async function load(container, render) {
@@ -68,7 +68,10 @@ async function loadAttachments(container, targetType, targetId) {
     listEl.replaceWith(listHtml);
 
     listHtml.querySelectorAll('[data-file-id]').forEach(function (el) {
-      el.onclick = function () { openAttachment(el.dataset.fileId); };
+      el.onclick = function () {
+        const item = items.find(function (i) { return String(i['ファイルID']) === el.dataset.fileId; });
+        openAttachment(item);
+      };
     });
     listHtml.querySelector('#addAttachment').onclick = function () {
       openAttachmentUploadForm(targetType, targetId, function () {
@@ -89,19 +92,87 @@ function attachmentRow(item) {
     </div>`;
 }
 
-/** タップされたPDFをダウンロードしてBlob URLで新しいタブに開く */
-async function openAttachment(fileId) {
-  toast('ファイルを開いています...');
+/**
+ * タップされた書類をアプリ内のモーダルで表示する。
+ *
+ * 別タブで開く方式(window.open + blob URL)はLINEアプリ内のWebViewが対応しておらず
+ * 「開けません」となるため、ポータルの画面内に直接描画している。
+ * 写真はdata URLを<img>に、PDFはPDF.jsでcanvasに描画する。
+ */
+async function openAttachment(item) {
+  const body = h('<div><div class="loading">読み込み中...</div></div>');
+  const modal = openModal(textOr(item['ファイル名'], '書類'), body);
+
   try {
-    const data = await api('attachments.download', { fileId: fileId });
-    const byteChars = atob(data['fileData']);
-    const bytes = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([bytes], { type: data['mimeType'] || 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const data = await api('attachments.download', { fileId: item['ファイルID'] });
+    const mimeType = data['mimeType'] || '';
+    body.innerHTML = '';
+
+    if (mimeType.indexOf('image/') === 0) {
+      const img = h('<img class="attachment-view" alt="">');
+      img.src = 'data:' + mimeType + ';base64,' + data['fileData'];
+      body.appendChild(img);
+    } else {
+      await renderPdfInto(body, data['fileData']);
+    }
   } catch (err) {
-    toast(err.message || String(err), 'error');
+    body.innerHTML = '';
+    body.appendChild(h(`<div class="error-box">${esc(err.message || String(err))}</div>`));
+  }
+
+  return modal;
+}
+
+// PDF.jsはCDNから遅延読み込みする(PDFを開いたときだけ。初回表示を重くしないため)。
+// v3系はUMD形式でWebViewとの相性がよく、window.pdfjsLib として読み込まれる。
+const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+let pdfjsLoading = null;
+
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (pdfjsLoading) return pdfjsLoading;
+
+  pdfjsLoading = new Promise(function (resolve, reject) {
+    const script = document.createElement('script');
+    script.src = PDFJS_BASE + '/pdf.min.js';
+    script.onload = function () {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + '/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = function () {
+      pdfjsLoading = null; // 通信不良の一時的な失敗であれば次回やり直せるようにする
+      reject(new Error('PDFの表示に必要なライブラリを読み込めませんでした。通信環境をご確認ください。'));
+    };
+    document.head.appendChild(script);
+  });
+  return pdfjsLoading;
+}
+
+/** PDFの全ページをcontainerの幅に合わせてcanvasに描画する */
+async function renderPdfInto(container, base64) {
+  const pdfjsLib = await loadPdfJs();
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  // モーダルに差し込んだ後の実際の表示幅に合わせる(取得できない場合は控えめな既定値)
+  const width = container.clientWidth || 320;
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const base = page.getViewport({ scale: 1 });
+    // 端末の画素密度を掛けて描画し、文字がぼやけないようにする
+    const ratio = window.devicePixelRatio || 1;
+    const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'attachment-view';
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    container.appendChild(canvas);
+
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
   }
 }
 
