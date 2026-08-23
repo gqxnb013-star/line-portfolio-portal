@@ -118,7 +118,7 @@ function openAttachmentUploadForm(targetType, targetId, onDone) {
       </div>
       <div class="field">
         <label class="field__label">ファイル<span class="req">*</span></label>
-        <input type="file" id="attachmentFile" accept="application/pdf,image/jpeg,image/png">
+        <input type="file" id="attachmentFile" accept="application/pdf,image/*">
         <div class="field__help">PDF・写真(JPEG/PNG)に対応、上限10MBです</div>
       </div>
       <button type="button" class="btn" id="uploadAttachment">アップロードする</button>
