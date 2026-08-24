@@ -10,6 +10,8 @@
 *.jpg
 *.jpeg
 *.pdf
+# UIアイコン等、個人情報を含まないアプリ用アセットのみ例外的に許可
+!assets/**
 .env
 .env.*
 .DS_Store
