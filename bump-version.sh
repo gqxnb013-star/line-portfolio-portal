@@ -16,7 +16,7 @@ set -eu
 cd "$(dirname "$0")"
 
 # ?v= を含む可能性のあるファイル。新しいjsを追加したらここにも足すこと
-TARGETS="index.html js/api.js js/app.js js/customer.js js/ifa.js js/ui.js"
+TARGETS="index.html js/api.js js/app.js js/customer.js js/ifa.js js/ui.js js/perf.js"
 
 current=$(grep -oE '\?v=[0-9a-z]+' index.html | head -n 1 | cut -c4-)
 if [ -z "$current" ]; then

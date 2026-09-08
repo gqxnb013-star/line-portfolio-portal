@@ -7,13 +7,14 @@
  *   IFA       → 顧客一覧・ログ管理。顧客を選ぶと、その顧客の画面群へ入る
  */
 
-import { api, ApiError } from './api.js?v=20260823c';
-import { esc, toast } from './ui.js?v=20260823c';
+import { api, ApiError } from './api.js?v=20260908a';
+import { esc, toast } from './ui.js?v=20260908a';
 import {
   renderHome, renderInsurance, renderInvestment,
   renderBank, renderHousehold, renderProfile, renderNotices
-} from './customer.js?v=20260823c';
-import { renderCustomerList } from './ifa.js?v=20260823c';
+} from './customer.js?v=20260908a';
+import { renderCustomerList } from './ifa.js?v=20260908a';
+import { setupPerfPanel, recordPerf } from './perf.js?v=20260908a';
 
 const LIFF_ID = '2011207844-O3tCgdCh';
 
@@ -246,8 +247,13 @@ async function start() {
 
 async function init() {
   renderStatus('読み込み中...');
+  // 計測パネル(?debug=1 のときだけ表示)。起動時間も測るため最初に用意する
+  setupPerfPanel();
+  const bootBegan = Date.now();
   try {
+    const liffBegan = Date.now();
     await liff.init({ liffId: LIFF_ID });
+    recordPerf('liff.init', Date.now() - liffBegan);
     if (!liff.isLoggedIn()) {
       liff.login();
       return;
@@ -258,6 +264,7 @@ async function init() {
       return;
     }
     await start();
+    recordPerf('起動全体(最初の画面が出るまで)', Date.now() - bootBegan);
   } catch (err) {
     // IDトークンの期限切れは再ログインで解消するので、api.js側で自動的に処理される
     if (err instanceof ApiError && err.needsRelogin) {

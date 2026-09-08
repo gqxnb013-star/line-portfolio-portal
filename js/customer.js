@@ -9,11 +9,12 @@
  * state = { role: 'ifa'|'customer', customerId: 表示対象の顧客ID, reload: 再描画関数 }
  */
 
-import { api } from './api.js?v=20260823c';
+import { api } from './api.js?v=20260908a';
+import { recordPerf } from './perf.js?v=20260908a';
 import {
   h, esc, yen, date, bool, row, textOr, toast,
   showLoading, showError, emptyText, openModal, openFormModal
-} from './ui.js?v=20260823c';
+} from './ui.js?v=20260908a';
 
 /** 読み込み→描画の共通の流れ。通信エラーは画面上に出す */
 async function load(container, render) {
@@ -153,11 +154,13 @@ function loadPdfJs() {
   if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
   if (pdfjsLoading) return pdfjsLoading;
 
+  const began = Date.now();
   pdfjsLoading = new Promise(function (resolve, reject) {
     const script = document.createElement('script');
     script.src = PDFJS_BASE + '/pdf.min.js';
     script.onload = function () {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + '/pdf.worker.min.js';
+      recordPerf('pdfjs.load(CDNからの初回読み込み)', Date.now() - began);
       resolve(window.pdfjsLib);
     };
     script.onerror = function () {
@@ -172,6 +175,7 @@ function loadPdfJs() {
 /** PDFの全ページをcontainerの幅に合わせてcanvasに描画する */
 async function renderPdfInto(container, base64) {
   const pdfjsLib = await loadPdfJs();
+  const drawBegan = Date.now();
   const byteChars = atob(base64);
   const bytes = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
@@ -195,6 +199,7 @@ async function renderPdfInto(container, base64) {
 
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
   }
+  recordPerf('pdf.render(' + pdf.numPages + 'ページの描画)', Date.now() - drawBegan);
 }
 
 /** ファイル種類の選択+ファイル選択だけの簡易フォーム(openFormModalの汎用フォームはfile型を扱わないため専用に組む) */

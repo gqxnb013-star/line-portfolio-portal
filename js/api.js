@@ -7,6 +7,8 @@
 
 // GASのexec URL。ブラウザに配信される値なので秘密情報ではない
 // (データへのアクセス可否はGAS側がLINEのIDトークンを検証して判断している)。
+import { recordPerf } from './perf.js?v=20260908a';
+
 const API_URL = 'https://script.google.com/macros/s/AKfycbyyIFEawr9YGA2saXs2gfwN3yXF_FXpw_lupc7OrSTIjTLUScGOPH5V43J4uQtpUUJSQQ/exec';
 
 /**
@@ -43,9 +45,12 @@ export async function api(action, params = {}) {
   // 更新内容(values)はURLが長くなりやすいのでPOSTで送る。
   // Content-Type: text/plain にするとブラウザのプリフライト(OPTIONS)が発生せず、
   // OPTIONSに応答できないGASでもCORSエラーにならない。
+  const began = Date.now();
   const json = payload.values !== undefined
     ? await requestPost(payload)
     : await requestGet(payload);
+  // 往復時間と、GASが返した内部処理の内訳(_perf)を記録する(?debug=1 のとき画面に出る)
+  recordPerf('api:' + action, Date.now() - began, json && json._perf);
 
   if (!json || json.ok !== true) {
     const error = new ApiError((json && json.error) || '通信に失敗しました');
